@@ -45,28 +45,7 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="mt-auto px-1">
-        <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,#0b1c30_0%,#2e4d7d_100%)] text-[10px] font-bold text-white">
-            AC
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold text-ink">Alex Curator</p>
-            <p className="text-[10px] text-muted">Data Architect</p>
-          </div>
-        </div>
-
-        <div className="mt-4 text-[9px] uppercase tracking-[0.2em] text-muted">
-          v2.4.0
-        </div>
-        <button
-          type="button"
-          className="mt-4 inline-flex size-8 items-center justify-center rounded-full bg-primary text-lg leading-none text-white shadow-[0_12px_24px_rgba(0,75,202,0.26)]"
-          aria-label="Create new item"
-        >
-          +
-        </button>
-      </div>
+      
     </aside>
   )
 }

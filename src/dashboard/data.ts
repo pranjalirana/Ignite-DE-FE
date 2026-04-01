@@ -3,7 +3,6 @@ export type IconName =
   | 'dashboard'
   | 'database'
   | 'api'
-  | 'settings'
   | 'refresh'
   | 'bell'
   | 'filter'
@@ -16,7 +15,7 @@ export type IconName =
   | 'trend'
   | 'layers'
 
-export type ViewId = 'dashboard' | 'client-data' | 'api-data' | 'settings'
+export type ViewId = 'client-data' | 'api-data'
 
 export type NavItem = {
   id: ViewId
@@ -49,10 +48,8 @@ export type Transaction = {
 }
 
 export const navItems: NavItem[] = [
-  { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
-  { id: 'client-data', icon: 'database', label: 'Client Data' },
-  { id: 'api-data', icon: 'api', label: 'API Data' },
-  { id: 'settings', icon: 'settings', label: 'Settings' },
+  { id: 'client-data', icon: 'database', label: 'CSV Data' },
+  { id: 'api-data', icon: 'api', label: 'Adscribe Data' },
 ]
 
 export const filters = [

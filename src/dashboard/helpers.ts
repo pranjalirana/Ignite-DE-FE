@@ -3,7 +3,7 @@ export function cx(...classes: Array<string | false | null | undefined>) {
 }
 
 export function createChartPoints(
-  values: number[],
+  values: readonly number[],
   width = 700,
   height = 250,
   padding = 20,
