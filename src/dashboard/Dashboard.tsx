@@ -196,13 +196,6 @@ function Dashboard() {
                     <Icon name="download" className="size-4" />
                     Export Report
                   </button>
-                  <button
-                    type="button"
-                    className="inline-flex size-10 items-center justify-center rounded-full bg-surface-card text-muted shadow-ambient ring-1 ring-white/80 transition hover:text-ink"
-                    aria-label="Notifications"
-                  >
-                    <Icon name="bell" className="size-5" />
-                  </button>
                 </div>
               </div>
 
