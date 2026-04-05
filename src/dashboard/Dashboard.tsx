@@ -1,7 +1,48 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+import type {
+  AdscribeAnalyticsDetail,
+  CsvAnalyticsResponse,
+} from '../store/api/analyticsApi'
+import {
+  useGetAdscribeAnalyticsQuery,
+  useGetCsvAnalyticsQuery,
+} from '../store/api/analyticsApi'
 import { navItems, type ViewId } from './data'
-import { MobileNav, Sidebar } from './components'
-import { areaPath, createChartPoints, linePath } from './helpers'
+import {
+  DashboardCard,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  MetricTile,
+  MobileNav,
+  Sidebar,
+} from './components'
+import {
+  cx,
+  formatCurrency,
+  formatDateArray,
+  formatNumber,
+  formatPercent,
+  safeDivide,
+  safeNumber,
+  toDisplayLabel,
+} from './helpers'
 import Icon from './Icon'
 
 const viewCopy: Record<ViewId, { title: string; subtitle: string }> = {
@@ -15,12 +56,11 @@ const viewCopy: Record<ViewId, { title: string; subtitle: string }> = {
   },
 }
 
-const clientOptions = ['Client 1', 'Client 2', 'Client 3'] as const
+const csvClientOptions = ['alpha', 'beta', 'gamma'] as const
 
-type ClientOption = (typeof clientOptions)[number]
 type SourceKey = 'adscribe' | 'csv'
 
-const sourceSections: Record<
+const sourceAppearance: Record<
   SourceKey,
   {
     title: string
@@ -28,15 +68,6 @@ const sourceSections: Record<
     accent: string
     accentSoft: string
     label: string
-    defaults: { client: ClientOption; startDate: string; endDate: string }
-    clients: Record<
-      ClientOption,
-      {
-        metrics: Array<[string, string]>
-        trendSeries: readonly number[]
-        items: Array<[string, string]>
-      }
-    >
   }
 > = {
   adscribe: {
@@ -45,52 +76,6 @@ const sourceSections: Record<
     accent: '#004bca',
     accentSoft: '#eef3ff',
     label: 'Adscribe',
-    defaults: {
-      client: 'Client 1',
-      startDate: '2026-03-01',
-      endDate: '2026-03-31',
-    },
-    clients: {
-      'Client 1': {
-        metrics: [
-          ['Revenue', '$52.6K'],
-          ['Orders', '742'],
-          ['Status', 'Live Sync'],
-        ],
-        trendSeries: [18, 24, 21, 35, 32, 44, 60],
-        items: [
-          ['Morning Pulse', 'Last synced 8 mins ago'],
-          ['Finance Flow', 'Last synced 16 mins ago'],
-          ['Tech Weekly', 'Retry resolved 21 mins ago'],
-        ],
-      },
-      'Client 2': {
-        metrics: [
-          ['Revenue', '$24.8K'],
-          ['Orders', '336'],
-          ['Status', 'Live Sync'],
-        ],
-        trendSeries: [14, 19, 27, 25, 29, 37, 41],
-        items: [
-          ['Retail Burst', 'Last synced 6 mins ago'],
-          ['Weekend Deals', 'Last synced 13 mins ago'],
-          ['Spring Push', 'Last synced 24 mins ago'],
-        ],
-      },
-      'Client 3': {
-        metrics: [
-          ['Revenue', '$63.9K'],
-          ['Orders', '901'],
-          ['Status', 'Live Sync'],
-        ],
-        trendSeries: [20, 28, 30, 38, 42, 48, 57],
-        items: [
-          ['Daily Roundup', 'Last synced 5 mins ago'],
-          ['Late Night Promo', 'Last synced 11 mins ago'],
-          ['Design Diaries', 'Last synced 19 mins ago'],
-        ],
-      },
-    },
   },
   csv: {
     title: 'CSV Data',
@@ -98,57 +83,155 @@ const sourceSections: Record<
     accent: '#2563eb',
     accentSoft: '#f4f7ff',
     label: 'CSV',
-    defaults: {
-      client: 'Client 1',
-      startDate: '2026-03-01',
-      endDate: '2026-03-31',
-    },
-    clients: {
-      'Client 1': {
-        metrics: [
-          ['Revenue', '$31.6K'],
-          ['Orders', '545'],
-          ['Status', 'Batch Ready'],
-        ],
-        trendSeries: [10, 16, 18, 22, 27, 25, 33],
-        items: [
-          ['October Client Batch.csv', 'Uploaded 12 mins ago'],
-          ['Retail_Podcast_Orders.xlsx', 'Uploaded 38 mins ago'],
-          ['Northstar_Apr_Q2.csv', 'Uploaded 1 hr ago'],
-        ],
-      },
-      'Client 2': {
-        metrics: [
-          ['Revenue', '$37.0K'],
-          ['Orders', '598'],
-          ['Status', 'Batch Ready'],
-        ],
-        trendSeries: [13, 18, 24, 23, 27, 34, 39],
-        items: [
-          ['Client2_Weekly_Upload.csv', 'Uploaded 6 mins ago'],
-          ['Client2_Backfill_Q4.xlsx', 'Uploaded 29 mins ago'],
-          ['Regional_Sales_Import.csv', 'Uploaded 52 mins ago'],
-        ],
-      },
-      'Client 3': {
-        metrics: [
-          ['Revenue', '$29.6K'],
-          ['Orders', '561'],
-          ['Status', 'Batch Ready'],
-        ],
-        trendSeries: [11, 15, 17, 24, 28, 26, 31],
-        items: [
-          ['Client3_Live_Recon.csv', 'Uploaded 9 mins ago'],
-          ['April_Adjustments.xlsx', 'Uploaded 41 mins ago'],
-          ['Broadcast_Returns.csv', 'Uploaded 1 hr ago'],
-        ],
-      },
-    },
   },
+}
+
+const piePalette = ['#0f2d6b', '#1445a0', '#1d5fd0', '#2d76ee', '#5a97ff']
+
+type NamedRevenueItem = {
+  client?: string | null
+  clientName?: string | null
+  show?: string | null
+  showName?: string | null
+  revenue?: number | null
+}
+
+type ChartDatum = {
+  label: string
+  value: number
+}
+
+type TableColumn<T> = {
+  key: keyof T
+  label: string
+  align?: 'left' | 'right'
+  render?: (row: T) => string
+}
+
+type CsvDetailRow = {
+  orderDate: string
+  code: string
+  orders: string
+  revenue: string
+  revenuePerOrder: string
+}
+
+type AdscribeDetailRow = Record<string, string>
+
+function mapRevenueSeries(
+  series: Array<{ date?: unknown; month?: unknown; revenue?: number | null }>,
+  labelOptions?: Intl.DateTimeFormatOptions,
+) {
+  return series
+    .map((item) => {
+      const rawDate = item.date ?? item.month
+
+      return {
+        rawDate,
+        value: safeNumber(item.revenue),
+      }
+    })
+    .filter((item) => {
+      if (!item.rawDate) return false
+      if (Array.isArray(item.rawDate) && item.rawDate.length < 3) return false
+      return true
+    })
+    .map((item) => ({
+      label: formatDateArray(item.rawDate, labelOptions),
+      value: item.value,
+    }))
+}
+
+function mapCsvDetails(rows: CsvAnalyticsResponse['detail']): CsvDetailRow[] {
+  return rows
+    .filter((row) => {
+      if (!row.orderDate) return false
+
+      if (Array.isArray(row.orderDate) && row.orderDate.length < 3) return false
+
+      return true
+    })
+    .map((row) => ({
+      orderDate: formatDateArray(row.orderDate),
+      code: row.code?.trim() || 'Unknown',
+      orders: formatNumber(row.orders),
+      revenue: formatCurrency(row.revenue),
+      revenuePerOrder: formatCurrency(row.revenuePerOrder),
+    }))
+}
+
+function mapAdscribeDetails(rows: AdscribeAnalyticsDetail[]): AdscribeDetailRow[] {
+  return rows.map((row) => {
+    const preferredKeys = [
+      'orderDate',
+      'date',
+      'client',
+      'show',
+      'orders',
+      'impressions',
+      'revenue',
+      'revenuePerOrder',
+      'avgRevenuePerOrder',
+      'avgRevenuePerImpression',
+      'avgImpressionsPerOrder',
+    ]
+    const discoveredKeys = Object.keys(row).filter((key) => !preferredKeys.includes(key))
+    const orderedKeys = [...preferredKeys.filter((key) => key in row), ...discoveredKeys]
+
+    return orderedKeys.reduce<AdscribeDetailRow>((result, key) => {
+      const value = row[key]
+
+      if (key.toLowerCase().includes('date')) {
+        result[key] = formatDateArray(value)
+        return result
+      }
+
+      if (key.toLowerCase().includes('revenue')) {
+        result[key] = formatCurrency(value)
+        return result
+      }
+
+      if (key.toLowerCase().includes('impression')) {
+        const numericValue = safeNumber(value)
+        result[key] = key === 'avgRevenuePerImpression'
+          ? formatCurrency(numericValue, { maximumFractionDigits: 4 })
+          : formatNumber(numericValue)
+        return result
+      }
+
+      if (typeof value === 'number') {
+        result[key] = formatNumber(value)
+        return result
+      }
+
+      result[key] = typeof value === 'string' && value.trim() ? value : 'N/A'
+      return result
+    }, {})
+  })
+}
+
+function createAdscribeColumns(rows: AdscribeDetailRow[]): Array<TableColumn<AdscribeDetailRow>> {
+  const firstRow = rows[0]
+
+  if (!firstRow) {
+    return []
+  }
+
+  return Object.keys(firstRow).map((key) => ({
+    key,
+    label: toDisplayLabel(key),
+    align:
+      key.toLowerCase().includes('revenue') ||
+      key.toLowerCase().includes('orders') ||
+      key.toLowerCase().includes('impression')
+        ? 'right'
+        : 'left',
+  }))
 }
 
 function Dashboard() {
   const [activeView, setActiveView] = useState<ViewId>('client-data')
+  const [refreshAction, setRefreshAction] = useState<(() => void) | null>(null)
   const activeNavLabel = navItems.find((item) => item.id === activeView)?.label ?? 'CSV Data'
   const activeCopy = viewCopy[activeView]
 
@@ -184,24 +267,12 @@ function Dashboard() {
                 <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
-                    className="inline-flex items-center gap-2 rounded-full bg-surface-card px-4 py-2 text-sm font-semibold text-primary shadow-ambient ring-1 ring-white/80 transition hover:-translate-y-0.5"
+                    onClick={() => refreshAction?.()}
+                    className="inline-flex items-center gap-2 rounded-full bg-surface-card px-4 py-2 text-sm font-semibold text-primary shadow-ambient ring-1 ring-white/80 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={!refreshAction}
                   >
                     <Icon name="refresh" className="size-4" />
                     Refresh Data
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#004bca_0%,#0061ff_100%)] px-5 py-2 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(0,75,202,0.22)] transition hover:-translate-y-0.5"
-                  >
-                    <Icon name="download" className="size-4" />
-                    Export Report
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex size-10 items-center justify-center rounded-full bg-surface-card text-muted shadow-ambient ring-1 ring-white/80 transition hover:text-ink"
-                    aria-label="Notifications"
-                  >
-                    <Icon name="bell" className="size-5" />
                   </button>
                 </div>
               </div>
@@ -213,13 +284,12 @@ function Dashboard() {
           <main className="flex-1 px-4 pb-10 sm:px-6 lg:px-8 xl:px-10">
             <div className="mx-auto max-w-[1360px] space-y-6 pt-2 sm:space-y-8 sm:pt-4">
               {activeView === 'client-data' ? (
-                <SourceSectionView source="csv" />
+                <CsvSection onRefreshChange={setRefreshAction} />
               ) : null}
 
               {activeView === 'api-data' ? (
-                <SourceSectionView source="adscribe" />
+                <AdscribeSection onRefreshChange={setRefreshAction} />
               ) : null}
-
             </div>
           </main>
         </div>
@@ -228,102 +298,246 @@ function Dashboard() {
   )
 }
 
-function SourceSectionView({ source }: { source: SourceKey }) {
-  const config = sourceSections[source]
-  const [filters, setFilters] = useState(config.defaults)
-  const currentClient = config.clients[filters.client]
-  const [animatedSeries, setAnimatedSeries] = useState<number[]>([
-    ...currentClient.trendSeries,
-  ])
-  const previousSeriesRef = useRef<number[]>([...currentClient.trendSeries])
+function CsvSection({
+  onRefreshChange,
+}: {
+  onRefreshChange: Dispatch<SetStateAction<(() => void) | null>>
+}) {
+  const [client, setClient] = useState<(typeof csvClientOptions)[number]>('beta')
+  const appearance = sourceAppearance.csv
+  const { data, error, isError, isFetching, isLoading, refetch } = useGetCsvAnalyticsQuery({
+    client,
+  })
 
   useEffect(() => {
-    const fromSeries = previousSeriesRef.current
-    const toSeries = [...currentClient.trendSeries]
+    onRefreshChange(() => refetch)
 
-    if (fromSeries.every((value, index) => value === toSeries[index])) {
-      return
-    }
+    return () => onRefreshChange(null)
+  }, [onRefreshChange, refetch])
 
-    const durationMs = 850
-    const startTime = performance.now()
-    let frameId = 0
+  const kpis = data
+    ? [
+        ['Total Orders', formatNumber(data.kpi.totalOrders)],
+        ['Total Revenue', formatCurrency(data.kpi.totalRevenue)],
+        ['Avg. Revenue / Order', formatCurrency(data.kpi.avgRevenuePerOrder)],
+      ]
+    : []
 
-    const tick = (now: number) => {
-      const elapsed = Math.min((now - startTime) / durationMs, 1)
-      const eased = 1 - Math.pow(1 - elapsed, 3)
-
-      setAnimatedSeries(
-        toSeries.map((target, index) => {
-          const from = fromSeries[index] ?? target
-          return from + (target - from) * eased
-        }),
-      )
-
-      if (elapsed < 1) {
-        frameId = requestAnimationFrame(tick)
-        return
-      }
-
-      previousSeriesRef.current = toSeries
-    }
-
-    frameId = requestAnimationFrame(tick)
-
-    return () => cancelAnimationFrame(frameId)
-  }, [currentClient.trendSeries, filters.client])
-
-  const trendPoints = createChartPoints(animatedSeries, 620, 220, 22)
-
-  const updateFilter = (
-    field: 'client' | 'startDate' | 'endDate',
-    value: string,
-  ) => {
-    setFilters((current) => ({
-      ...current,
-      [field]: value,
-    }))
-  }
+  const dailySeries = data ? mapRevenueSeries(data.daily) : []
+  const monthlySeries = data
+    ? mapRevenueSeries(data.monthly, { month: 'short', year: 'numeric' })
+    : []
+  const codeSeries: ChartDatum[] = data
+    ? data.byCode.map((item) => ({
+        label: item.code?.trim() || 'Unknown',
+        value: safeNumber(item.revenue),
+      }))
+    : []
+  const detailRows = data ? mapCsvDetails(data.detail) : []
 
   return (
-    <article className="rounded-[30px] bg-surface-card p-5 shadow-ambient ring-1 ring-white/80 sm:p-6">
-      <div className="flex flex-col gap-5">
-        <div>
-          <p className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-muted">
-            Source Section
-          </p>
-          <div className="mt-2 flex items-center gap-3">
-            <h2 className="font-display text-[1.8rem] font-extrabold tracking-[-0.03em] text-ink">
-              {config.title}
-            </h2>
-            <span
-              className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-white"
-              style={{ backgroundColor: config.accent }}
-            >
-              {config.label}
-            </span>
-          </div>
-          <p className="mt-2 max-w-xl text-sm text-muted">{config.subtitle}</p>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-3">
+    <SourceSectionShell
+      appearance={appearance}
+      isFetching={isFetching}
+      filters={
+        <div className="grid gap-3 md:grid-cols-[minmax(0,320px)]">
           <label className="rounded-[22px] bg-surface-low px-4 py-3">
             <span className="text-[0.62rem] font-bold uppercase tracking-[0.18em] text-muted">
               Client
             </span>
             <select
-              value={filters.client}
-              onChange={(event) => updateFilter('client', event.target.value)}
-              className="mt-2 w-full bg-transparent text-sm font-semibold text-ink outline-none"
+              value={client}
+              onChange={(event) =>
+                setClient(event.target.value as (typeof csvClientOptions)[number])
+              }
+              className="mt-2 w-full bg-transparent text-sm font-semibold capitalize text-ink outline-none"
             >
-              {clientOptions.map((client) => (
-                <option key={client} value={client}>
-                  {client}
+              {csvClientOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
                 </option>
               ))}
             </select>
           </label>
+        </div>
+      }
+    >
+      {isLoading && !data ? (
+        <LoadingState label="CSV analytics" />
+      ) : isError ? (
+        <ErrorState
+          title="CSV analytics could not be loaded"
+          message={getErrorMessage(error)}
+          onRetry={refetch}
+        />
+      ) : (
+        <div className="space-y-5">
+          <DashboardCard
+            title="KPI Overview"
+            subtitle={`Performance snapshot for ${client}.`}
+            badge="Tile 1"
+          >
+            <div className="grid gap-3 sm:grid-cols-3">
+              {kpis.map(([label, value]) => (
+                <MetricTile
+                  key={label}
+                  label={label}
+                  value={value}
+                  accentSoft={appearance.accentSoft}
+                />
+              ))}
+            </div>
+          </DashboardCard>
 
+          <div className="grid gap-5 xl:grid-cols-2">
+            <DashboardCard
+              title="Revenue Over Time"
+              subtitle="Daily revenue from the CSV analytics feed."
+              badge="Tile 2"
+            >
+              <RevenueLineChart
+                data={dailySeries}
+                accent={appearance.accent}
+                emptyTitle="No daily revenue yet"
+                emptyDescription="Revenue points will appear here when the daily API series returns data."
+              />
+            </DashboardCard>
+
+            <DashboardCard
+              title="Revenue Over Time"
+              subtitle="Monthly revenue trend from uploaded CSV records."
+              badge="Tile 3"
+            >
+              <RevenueLineChart
+                data={monthlySeries}
+                accent={appearance.accent}
+                emptyTitle="No monthly revenue yet"
+                emptyDescription="Monthly totals will appear here when the API returns data."
+              />
+            </DashboardCard>
+          </div>
+
+          <div className="grid gap-5">
+            <DashboardCard
+              title="Revenue by Code"
+              subtitle="Revenue distribution by CSV code."
+              badge="Tile 4"
+            >
+              <RevenueBarChart
+                data={codeSeries}
+                accent={appearance.accent}
+                emptyTitle="No code-level revenue yet"
+                emptyDescription="Code breakdowns will render here when the API returns revenue by code."
+              />
+            </DashboardCard>
+          </div>
+
+          <div className="grid gap-5">
+            <DashboardCard
+              title="Details"
+              subtitle="CSV transaction-level detail rows."
+              badge="Tile 5"
+            >
+              <DataTable<CsvDetailRow>
+                rows={detailRows}
+                columns={[
+                  { key: 'orderDate', label: 'Order Date' },
+                  { key: 'code', label: 'Code' },
+                  { key: 'orders', label: 'Orders', align: 'right' },
+                  { key: 'revenue', label: 'Revenue', align: 'right' },
+                  { key: 'revenuePerOrder', label: 'Revenue / Order', align: 'right' },
+                ]}
+                emptyTitle="No CSV detail rows"
+                emptyDescription="Detailed orders and revenue rows will appear here once the API returns data."
+              />
+            </DashboardCard>
+          </div>
+        </div>
+      )}
+    </SourceSectionShell>
+  )
+}
+
+function AdscribeSection({
+  onRefreshChange,
+}: {
+  onRefreshChange: Dispatch<SetStateAction<(() => void) | null>>
+}) {
+  const [filters, setFilters] = useState({
+    startDate: '2026-03-01',
+    endDate: '2026-03-31',
+  })
+  const appearance = sourceAppearance.adscribe
+  const { data, error, isError, isFetching, isLoading, refetch } =
+    useGetAdscribeAnalyticsQuery({
+      startDate: filters.startDate,
+      endDate: filters.endDate || undefined,
+    })
+
+  useEffect(() => {
+    onRefreshChange(() => refetch)
+
+    return () => onRefreshChange(null)
+  }, [onRefreshChange, refetch])
+
+  const kpis = data
+    ? [
+        ['Total Revenue', formatCurrency(data.kpi.totalRevenue)],
+        ['Total Orders', formatNumber(data.kpi.totalOrders)],
+        ['Total Impressions', formatNumber(data.kpi.totalImpressions)],
+        ['Avg. Revenue / Order', formatCurrency(data.kpi.avgRevenuePerOrder)],
+        [
+          'Avg. Revenue / Impression',
+          formatCurrency(
+            data.kpi.avgRevenuePerImpression ??
+              safeDivide(data.kpi.totalRevenue, data.kpi.totalImpressions),
+            { maximumFractionDigits: 4 },
+          ),
+        ],
+        [
+          'Avg. Impressions / Order',
+          formatNumber(
+            data.kpi.avgImpressionsPerOrder ??
+              safeDivide(data.kpi.totalImpressions, data.kpi.totalOrders),
+            { maximumFractionDigits: 2 },
+          ),
+        ],
+      ]
+    : []
+
+  const dailySeries = data ? mapRevenueSeries(data.daily) : []
+  const byClientSeries: ChartDatum[] = data
+    ? data.byClient
+        .map((item) => {
+          const namedItem = item as NamedRevenueItem
+          const value = Number(item.revenue)
+
+          return {
+            label: namedItem.clientName?.trim() || namedItem.client?.trim() || 'Unknown',
+            value: isNaN(value) ? 0 : value,
+          }
+        })
+        .filter((item) => item.value > 0)
+    : []
+  const topShowSeries: ChartDatum[] = data
+    ? data.topShows.map((item) => {
+        const namedItem = item as NamedRevenueItem
+
+        return {
+          label: namedItem.showName?.trim() || namedItem.show?.trim() || 'Unknown',
+          value: safeNumber(item.revenue),
+        }
+      })
+    : []
+  const detailRows = data ? mapAdscribeDetails(data.detail) : []
+  const detailColumns = createAdscribeColumns(detailRows)
+
+  return (
+    <SourceSectionShell
+      appearance={appearance}
+      isFetching={isFetching}
+      filters={
+        <div className="grid gap-3 md:grid-cols-2">
           <label className="rounded-[22px] bg-surface-low px-4 py-3">
             <span className="text-[0.62rem] font-bold uppercase tracking-[0.18em] text-muted">
               Start Date
@@ -331,7 +545,9 @@ function SourceSectionView({ source }: { source: SourceKey }) {
             <input
               type="date"
               value={filters.startDate}
-              onChange={(event) => updateFilter('startDate', event.target.value)}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, startDate: event.target.value }))
+              }
               className="mt-2 w-full bg-transparent text-sm font-semibold text-ink outline-none"
             />
           </label>
@@ -343,118 +559,391 @@ function SourceSectionView({ source }: { source: SourceKey }) {
             <input
               type="date"
               value={filters.endDate}
-              onChange={(event) => updateFilter('endDate', event.target.value)}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, endDate: event.target.value }))
+              }
               className="mt-2 w-full bg-transparent text-sm font-semibold text-ink outline-none"
             />
           </label>
         </div>
-
+      }
+    >
+      {isLoading && !data ? (
+        <LoadingState label="Adscribe analytics" />
+      ) : isError ? (
+        <ErrorState
+          title="Adscribe analytics could not be loaded"
+          message={getErrorMessage(error)}
+          onRetry={refetch}
+        />
+      ) : (
         <div className="space-y-5">
-          <div className="grid gap-3 sm:grid-cols-3">
-            {currentClient.metrics.map(([label, value]) => (
-              <div
-                key={label}
-                className="rounded-[22px] px-4 py-4"
-                style={{ backgroundColor: config.accentSoft }}
-              >
-                <p className="text-[0.62rem] font-bold uppercase tracking-[0.18em] text-muted">
-                  {label}
-                </p>
-                <p className="mt-2 text-lg font-semibold text-ink">{value}</p>
-              </div>
-            ))}
-          </div>
-
-          <div
-            className="rounded-[26px] px-4 pt-5 sm:px-5"
-            style={{ backgroundColor: config.accentSoft }}
+          <DashboardCard
+            title="KPI Overview"
+            subtitle={`Live Adscribe metrics from ${filters.startDate} to ${filters.endDate || 'today'}.`}
+            badge="Tile 1"
           >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="font-display text-xl font-extrabold tracking-[-0.03em] text-ink">
-                  Revenue Trend
-                </h3>
-                <p className="mt-1 text-sm text-muted">
-                  Revenue trend for {filters.client.toLowerCase()} between {filters.startDate} and {filters.endDate}.
-                </p>
-              </div>
-              <span
-                className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white"
-                style={{ backgroundColor: config.accent }}
-              >
-                Trend
-              </span>
-            </div>
-
-            <svg
-              viewBox="0 0 620 220"
-              key={`${source}-${filters.client}`}
-              className="mt-5 h-[250px] w-full"
-              role="img"
-              aria-label={`${config.title} revenue trend`}
-            >
-              <defs>
-                <linearGradient id={`fill-${source}`} x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor={config.accent} stopOpacity="0.22" />
-                  <stop offset="100%" stopColor={config.accent} stopOpacity="0" />
-                </linearGradient>
-              </defs>
-            <path d={areaPath(trendPoints, 220)} fill={`url(#fill-${source})`} />
-            <path
-              d={linePath(trendPoints)}
-              fill="none"
-              stroke={config.accent}
-              strokeWidth="5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {trendPoints.map((point, index) => (
-              <circle
-                key={`${source}-point-${index + 1}`}
-                cx={point.x}
-                cy={point.y}
-                r="4.5"
-                fill="#ffffff"
-                stroke={config.accent}
-                strokeWidth="2.5"
-              />
-            ))}
-          </svg>
-
-            <div className="grid grid-cols-7 pb-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
-              <span>Mar 01</span>
-              <span>Mar 05</span>
-              <span>Mar 10</span>
-              <span>Mar 15</span>
-              <span>Mar 20</span>
-              <span>Mar 25</span>
-              <span>Mar 31</span>
-            </div>
-          </div>
-
-          <div className="rounded-[24px] bg-surface-low p-4">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="font-display text-lg font-extrabold tracking-[-0.03em] text-ink">
-                Recent Activity
-              </h3>
-              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted">
-                {currentClient.items.length} items
-              </span>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {currentClient.items.map(([title, meta]) => (
-                <div key={title} className="rounded-[18px] bg-white px-4 py-3">
-                  <p className="text-sm font-semibold text-ink">{title}</p>
-                  <p className="mt-1 text-xs text-muted">{meta}</p>
-                </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {kpis.map(([label, value]) => (
+                <MetricTile
+                  key={label}
+                  label={label}
+                  value={value}
+                  accentSoft={appearance.accentSoft}
+                />
               ))}
             </div>
+          </DashboardCard>
+
+          <div className="grid gap-5 xl:grid-cols-2">
+            <DashboardCard
+              title="Revenue Over Time"
+              subtitle="Daily Adscribe revenue across the selected date range."
+              badge="Tile 2"
+            >
+              <RevenueLineChart
+                data={dailySeries}
+                accent={appearance.accent}
+                emptyTitle="No Adscribe revenue yet"
+                emptyDescription="Daily revenue points will render here when the API returns data."
+              />
+            </DashboardCard>
+
+            <DashboardCard
+              title="Revenue by Client"
+              subtitle="Relative contribution by client."
+              badge="Tile 3"
+            >
+              <RevenuePieChart
+                data={byClientSeries}
+                emptyTitle="No client revenue yet"
+                emptyDescription="Client distribution will appear here when the API returns data."
+              />
+            </DashboardCard>
+          </div>
+
+          <div className="grid gap-5">
+            <DashboardCard
+              title="Top Shows"
+              subtitle="Highest-revenue shows across the selected date range."
+              badge="Tile 4"
+            >
+              <RevenueBarChart
+                data={topShowSeries}
+                accent={appearance.accent}
+                emptyTitle="No top shows yet"
+                emptyDescription="Show performance will render here when the API returns data."
+              />
+            </DashboardCard>
+          </div>
+
+          <div className="grid gap-5">
+            <DashboardCard
+              title="Details"
+              subtitle="Detailed Adscribe records returned by the API."
+              badge="Tile 5"
+            >
+              <DataTable<AdscribeDetailRow>
+                rows={detailRows}
+                columns={detailColumns}
+                emptyTitle="No Adscribe detail rows"
+                emptyDescription="Detailed records will appear here once the API returns data."
+              />
+            </DashboardCard>
           </div>
         </div>
+      )}
+    </SourceSectionShell>
+  )
+}
+
+function SourceSectionShell({
+  appearance,
+  isFetching,
+  filters,
+  children,
+}: {
+  appearance: (typeof sourceAppearance)[SourceKey]
+  isFetching: boolean
+  filters: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <article className="rounded-[30px] bg-surface-card p-5 shadow-ambient ring-1 ring-white/80 sm:p-6">
+      <div className="flex flex-col gap-5">
+        <div>
+          <p className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-muted">
+            Source Section
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h2 className="font-display text-[1.8rem] font-extrabold tracking-[-0.03em] text-ink">
+              {appearance.title}
+            </h2>
+            <span
+              className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-white"
+              style={{ backgroundColor: appearance.accent }}
+            >
+              {appearance.label}
+            </span>
+            <span
+              className={cx(
+                'rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em]',
+                isFetching ? 'bg-primary-soft text-primary' : 'bg-success-soft text-success',
+              )}
+            >
+              {isFetching ? 'Syncing' : 'Live'}
+            </span>
+          </div>
+          <p className="mt-2 max-w-xl text-sm text-muted">{appearance.subtitle}</p>
+        </div>
+
+        {filters}
+
+        {children}
       </div>
     </article>
   )
+}
+
+function RevenueLineChart({
+  data,
+  accent,
+  emptyTitle,
+  emptyDescription,
+}: {
+  data: ChartDatum[]
+  accent: string
+  emptyTitle: string
+  emptyDescription: string
+}) {
+  if (data.length === 0) {
+    return <EmptyState title={emptyTitle} description={emptyDescription} />
+  }
+
+  return (
+    <div className="h-[320px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data}>
+          <CartesianGrid stroke="rgba(148, 163, 184, 0.18)" strokeDasharray="4 4" />
+          <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 12 }} />
+          <YAxis
+            tick={{ fill: '#64748b', fontSize: 12 }}
+            tickFormatter={(value: number) => formatCurrency(value, { maximumFractionDigits: 0 })}
+            width={92}
+          />
+          <Tooltip
+            formatter={(value) => formatCurrency(safeNumber(value))}
+            labelFormatter={(label) => `Date: ${label}`}
+            contentStyle={{
+              borderRadius: '18px',
+              border: '1px solid rgba(255,255,255,0.9)',
+              boxShadow: '0 20px 45px rgba(15, 23, 42, 0.12)',
+            }}
+          />
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke={accent}
+            strokeWidth={4}
+            dot={{ r: 4, strokeWidth: 2, fill: '#ffffff' }}
+            activeDot={{ r: 6 }}
+            isAnimationActive
+            animationDuration={850}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function RevenueBarChart({
+  data,
+  accent,
+  emptyTitle,
+  emptyDescription,
+}: {
+  data: ChartDatum[]
+  accent: string
+  emptyTitle: string
+  emptyDescription: string
+}) {
+  if (data.length === 0) {
+    return <EmptyState title={emptyTitle} description={emptyDescription} />
+  }
+
+  return (
+    <div className="h-[320px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} barGap={8} margin={{ top: 8, right: 12, left: 0, bottom: 28 }}>
+          <CartesianGrid stroke="rgba(148, 163, 184, 0.18)" strokeDasharray="4 4" />
+          <XAxis
+            dataKey="label"
+            interval={0}
+            angle={-24}
+            textAnchor="end"
+            height={92}
+            tick={{ fill: '#64748b', fontSize: 11 }}
+          />
+          <YAxis
+            tick={{ fill: '#64748b', fontSize: 12 }}
+            tickFormatter={(value: number) => formatCurrency(value, { maximumFractionDigits: 0 })}
+            width={92}
+          />
+          <Tooltip
+            formatter={(value) => formatCurrency(safeNumber(value))}
+            labelFormatter={(label) => `Label: ${label}`}
+            contentStyle={{
+              borderRadius: '18px',
+              border: '1px solid rgba(255,255,255,0.9)',
+              boxShadow: '0 20px 45px rgba(15, 23, 42, 0.12)',
+            }}
+          />
+          <Bar
+            dataKey="value"
+            radius={[16, 16, 6, 6]}
+            fill={accent}
+            isAnimationActive
+            animationDuration={850}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function RevenuePieChart({
+  data,
+  emptyTitle,
+  emptyDescription,
+}: {
+  data: ChartDatum[]
+  emptyTitle: string
+  emptyDescription: string
+}) {
+  if (data.length === 0) {
+    return <EmptyState title={emptyTitle} description={emptyDescription} />
+  }
+
+  const total = data.reduce((sum, item) => sum + item.value, 0)
+
+  return (
+    <div className="h-[320px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={data}
+            dataKey="value"
+            nameKey="label"
+            cx="50%"
+            cy="50%"
+            innerRadius={58}
+            outerRadius={104}
+            paddingAngle={3}
+            isAnimationActive
+            animationDuration={850}
+          >
+            {data.map((entry, index) => (
+              <Cell
+                key={`${entry.label}-${index + 1}`}
+                fill={piePalette[index % piePalette.length]}
+              />
+            ))}
+          </Pie>
+          <Tooltip
+            formatter={(value) => [
+              `${formatCurrency(safeNumber(value))} (${formatPercent(
+                safeDivide(safeNumber(value), total) * 100,
+              )})`,
+              'Revenue',
+            ]}
+            contentStyle={{
+              borderRadius: '18px',
+              border: '1px solid rgba(255,255,255,0.9)',
+              boxShadow: '0 20px 45px rgba(15, 23, 42, 0.12)',
+            }}
+          />
+          <Legend />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function DataTable<T extends Record<string, string>>({
+  rows,
+  columns,
+  emptyTitle,
+  emptyDescription,
+}: {
+  rows: T[]
+  columns: Array<TableColumn<T>>
+  emptyTitle: string
+  emptyDescription: string
+}) {
+  if (rows.length === 0 || columns.length === 0) {
+    return <EmptyState title={emptyTitle} description={emptyDescription} />
+  }
+
+  return (
+    <div className="overflow-hidden rounded-[22px] bg-white">
+      <div className="max-h-[336px] overflow-auto">
+        <table className="min-w-full border-collapse">
+          <thead>
+            <tr className="sticky top-0 border-b border-slate-100 bg-slate-50/95 backdrop-blur">
+              {columns.map((column) => (
+                <th
+                  key={String(column.key)}
+                  className={cx(
+                    'px-4 py-3 text-xs font-bold uppercase tracking-[0.16em] text-muted',
+                    column.align === 'right' ? 'text-right' : 'text-left',
+                  )}
+                >
+                  {column.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rowIndex) => (
+              <tr key={`row-${rowIndex + 1}`} className="border-b border-slate-100 last:border-b-0">
+                {columns.map((column) => (
+                  <td
+                    key={`${String(column.key)}-${rowIndex + 1}`}
+                    className={cx(
+                      'px-4 py-3 text-sm text-ink',
+                      column.align === 'right' ? 'text-right' : 'text-left',
+                    )}
+                  >
+                    {column.render ? column.render(row) : row[column.key]}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function getErrorMessage(error: unknown) {
+  if (typeof error === 'object' && error !== null) {
+    const withStatus = error as { status?: number | string; data?: unknown; error?: string }
+
+    if (typeof withStatus.error === 'string' && withStatus.error.trim()) {
+      return withStatus.error
+    }
+
+    if (typeof withStatus.data === 'string' && withStatus.data.trim()) {
+      return withStatus.data
+    }
+
+    if (withStatus.status) {
+      return `Request failed with status ${withStatus.status}.`
+    }
+  }
+
+  return 'Please try refreshing the dashboard again.'
 }
 
 export default Dashboard

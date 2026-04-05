@@ -1,4 +1,5 @@
-import type { IconName, KpiCard, Transaction, ViewId } from './data'
+import type { ReactNode } from 'react'
+import type { ViewId } from './data'
 import { navItems } from './data'
 import { cx } from './helpers'
 import Icon from './Icon'
@@ -20,9 +21,7 @@ export function Sidebar({
           <p className="font-display text-sm font-extrabold tracking-[-0.03em] text-primary">
             The Digital Curator
           </p>
-          <p className="text-[11px] text-muted">
-            Precision workspace
-          </p>
+          <p className="text-[11px] text-muted">Precision workspace</p>
         </div>
       </div>
 
@@ -44,8 +43,6 @@ export function Sidebar({
           </button>
         ))}
       </nav>
-
-      
     </aside>
   )
 }
@@ -79,105 +76,127 @@ export function MobileNav({
   )
 }
 
-export function KpiPanel({ card }: { card: KpiCard }) {
-  const isSuccess = card.tone === 'success'
-  const bars = card.bars
-
-  return (
-    <article className="rounded-[28px] bg-surface-card p-5 shadow-ambient ring-1 ring-white/80 sm:p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[0.68rem] font-bold uppercase tracking-[0.24em] text-muted">
-            {card.label}
-          </p>
-          <h3 className="mt-3 font-display text-[2rem] font-extrabold tracking-[-0.04em] text-ink">
-            {card.value}
-          </h3>
-        </div>
-        <span
-          className={cx(
-            'rounded-full px-2.5 py-1 text-[0.68rem] font-bold uppercase tracking-[0.18em]',
-            isSuccess
-              ? 'bg-success-soft text-success'
-              : 'bg-primary-soft text-primary',
-          )}
-        >
-          {card.delta}
-        </span>
-      </div>
-
-      {bars ? (
-        <div className="mt-6 flex h-12 items-end gap-1.5">
-          {bars.map((bar, index) => (
-            <div
-              key={`${card.label}-${index + 1}`}
-              className={cx(
-                'flex-1 rounded-t-full',
-                index >= bars.length - 2 ? 'bg-primary' : 'bg-primary/18',
-              )}
-              style={{ height: `${bar}%` }}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="mt-6 flex items-center gap-3 rounded-[22px] bg-surface-low px-4 py-3">
-          <div className="inline-flex size-10 items-center justify-center rounded-2xl bg-surface-panel text-primary">
-            <Icon name="layers" className="size-5" />
-          </div>
-          <p className="text-sm text-muted">{card.caption}</p>
-        </div>
-      )}
-
-      {bars ? <p className="mt-4 text-sm text-muted">{card.caption}</p> : null}
-    </article>
-  )
-}
-
-export function MiniMetric({
-  icon,
-  label,
-  value,
-  caption,
+export function DashboardCard({
+  title,
+  subtitle,
+  badge,
+  children,
+  className,
 }: {
-  icon: IconName
-  label: string
-  value: string
-  caption: string
+  title: string
+  subtitle?: string
+  badge?: string
+  children: ReactNode
+  className?: string
 }) {
   return (
-    <article className="rounded-[28px] bg-surface-card p-5 shadow-ambient ring-1 ring-white/80">
-      <div className="flex items-start justify-between gap-3">
+    <section
+      className={cx(
+        'rounded-[26px] bg-surface-low p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:p-5',
+        className,
+      )}
+    >
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[0.68rem] font-bold uppercase tracking-[0.24em] text-muted">
-            {label}
-          </p>
-          <h3 className="mt-3 font-display text-[1.9rem] font-extrabold tracking-[-0.04em] text-ink">
-            {value}
+          <h3 className="font-display text-xl font-extrabold tracking-[-0.03em] text-ink">
+            {title}
           </h3>
+          {subtitle ? <p className="mt-1 text-sm text-muted">{subtitle}</p> : null}
         </div>
-        <span className="inline-flex size-11 items-center justify-center rounded-2xl bg-surface-panel text-primary">
-          <Icon name={icon} className="size-5" />
-        </span>
+        {badge ? (
+          <span className="rounded-full bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-muted">
+            {badge}
+          </span>
+        ) : null}
       </div>
-      <p className="mt-3 text-sm text-muted">{caption}</p>
-    </article>
+
+      <div className="mt-5">{children}</div>
+    </section>
   )
 }
 
-export function StatusPill({ status }: { status: Transaction['status'] }) {
-  const syncing = status === 'SYNCED'
-
+export function MetricTile({
+  label,
+  value,
+  accentSoft,
+}: {
+  label: string
+  value: string
+  accentSoft: string
+}) {
   return (
-    <span
-      className={cx(
-        'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[0.68rem] font-bold uppercase tracking-[0.18em]',
-        syncing ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning',
-      )}
+    <div
+      className="rounded-[22px] px-4 py-4 transition duration-300 hover:-translate-y-0.5"
+      style={{ backgroundColor: accentSoft }}
     >
-      <span
-        className={cx('h-2 w-2 rounded-full', syncing ? 'bg-success' : 'bg-warning')}
-      />
-      {status}
-    </span>
+      <p className="text-[0.62rem] font-bold uppercase tracking-[0.18em] text-muted">
+        {label}
+      </p>
+      <p className="mt-2 text-lg font-semibold text-ink">{value}</p>
+    </div>
+  )
+}
+
+export function LoadingState({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-52 flex-col items-center justify-center gap-4 rounded-[22px] border border-dashed border-primary/20 bg-white/70 px-6 text-center">
+      <div className="size-10 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+      <div>
+        <p className="text-sm font-semibold text-ink">Loading {label}</p>
+        <p className="mt-1 text-sm text-muted">Fetching the latest analytics from the API.</p>
+      </div>
+    </div>
+  )
+}
+
+export function ErrorState({
+  title,
+  message,
+  onRetry,
+}: {
+  title: string
+  message: string
+  onRetry?: () => void
+}) {
+  return (
+    <div className="flex min-h-52 flex-col items-center justify-center gap-4 rounded-[22px] border border-rose-200 bg-rose-50/80 px-6 text-center">
+      <div className="inline-flex size-11 items-center justify-center rounded-full bg-white text-rose-500 shadow-ambient">
+        <Icon name="flash" className="size-5" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-ink">{title}</p>
+        <p className="mt-1 max-w-md text-sm text-muted">{message}</p>
+      </div>
+      {onRetry ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-primary shadow-ambient ring-1 ring-primary/10 transition hover:-translate-y-0.5"
+        >
+          <Icon name="refresh" className="size-4" />
+          Retry
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+export function EmptyState({
+  title,
+  description,
+}: {
+  title: string
+  description: string
+}) {
+  return (
+    <div className="flex min-h-52 flex-col items-center justify-center gap-3 rounded-[22px] border border-dashed border-primary/15 bg-white/70 px-6 text-center">
+      <div className="inline-flex size-11 items-center justify-center rounded-full bg-surface-panel text-primary">
+        <Icon name="layers" className="size-5" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-ink">{title}</p>
+        <p className="mt-1 max-w-md text-sm text-muted">{description}</p>
+      </div>
+    </div>
   )
 }
