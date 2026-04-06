@@ -46,6 +46,16 @@ function Icon({ name, className }: { name: IconName; className?: string }) {
         </>
       ) : null}
 
+      {name === 'upload' ? (
+        <>
+          <path d="M12 16V5" />
+          <path d="m8 9 4-4 4 4" />
+          <path d="M5 19h14" />
+          <path d="M7 19a2 2 0 0 1-2-2v-2" />
+          <path d="M17 19a2 2 0 0 0 2-2v-2" />
+        </>
+      ) : null}
+
       {name === 'refresh' ? (
         <>
           <path d="M20 11a8 8 0 0 0-14-5" />
