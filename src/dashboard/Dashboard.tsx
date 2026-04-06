@@ -54,11 +54,16 @@ const viewCopy: Record<ViewId, { title: string; subtitle: string }> = {
     title: 'Adscribe Data',
     subtitle: 'Live synced Adscribe revenue, order activity, and connected source performance.',
   },
+  upload: {
+    title: 'Upload',
+    subtitle: 'Send client files through a presigned upload flow and push them directly to storage.',
+  },
 }
 
 const csvClientOptions = ['alpha', 'beta', 'gamma'] as const
+const uploadClientOptions = ['alpha', 'beta','gamma'] as const
 
-type SourceKey = 'adscribe' | 'csv'
+type SourceKey = 'adscribe' | 'csv' | 'upload'
 
 const sourceAppearance: Record<
   SourceKey,
@@ -83,6 +88,13 @@ const sourceAppearance: Record<
     accent: '#2563eb',
     accentSoft: '#f4f7ff',
     label: 'CSV',
+  },
+  upload: {
+    title: 'Upload',
+    subtitle: 'Request a presigned URL, then send the selected client file directly to S3.',
+    accent: '#14532d',
+    accentSoft: '#ecfdf3',
+    label: 'Upload',
   },
 }
 
@@ -117,6 +129,27 @@ type CsvDetailRow = {
 }
 
 type AdscribeDetailRow = Record<string, string>
+type UploadUrlResponse = {
+  presignedUrl?: string
+  uploadUrl?: string
+  url?: string
+  fileKey?: string
+  requiredHeaders?: Record<string, string>
+}
+
+function parseS3ErrorMessage(responseText: string) {
+  const codeMatch = responseText.match(/<Code>(.*?)<\/Code>/)
+  const messageMatch = responseText.match(/<Message>(.*?)<\/Message>/)
+
+  if (!codeMatch && !messageMatch) {
+    return responseText.trim()
+  }
+
+  const code = codeMatch?.[1]?.trim()
+  const message = messageMatch?.[1]?.trim()
+
+  return [code, message].filter(Boolean).join(': ')
+}
 
 function mapRevenueSeries(
   series: Array<{ date?: unknown; month?: unknown; revenue?: number | null }>,
@@ -290,6 +323,10 @@ function Dashboard() {
               {activeView === 'api-data' ? (
                 <AdscribeSection onRefreshChange={setRefreshAction} />
               ) : null}
+
+              {activeView === 'upload' ? (
+                <UploadSection onRefreshChange={setRefreshAction} />
+              ) : null}
             </div>
           </main>
         </div>
@@ -454,6 +491,206 @@ function CsvSection({
           </div>
         </div>
       )}
+    </SourceSectionShell>
+  )
+}
+
+function UploadSection({
+  onRefreshChange,
+}: {
+  onRefreshChange: Dispatch<SetStateAction<(() => void) | null>>
+}) {
+  const appearance = sourceAppearance.upload
+  const [clientName, setClientName] =
+    useState<(typeof uploadClientOptions)[number]>('alpha')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
+
+  const resetUploadState = () => {
+    setSuccessMessage('')
+    setErrorMessage('')
+  }
+
+  useEffect(() => {
+    onRefreshChange(null)
+
+    return () => onRefreshChange(null)
+  }, [onRefreshChange])
+
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      setErrorMessage('Please choose a file before uploading.')
+      setSuccessMessage('')
+      return
+    }
+
+    setIsUploading(true)
+    resetUploadState()
+
+    try {
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
+      const uploadUrlResponse = await fetch(`${apiBaseUrl}/api/upload-url`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileName: selectedFile.name,
+          clientName,
+        }),
+      })
+
+      if (!uploadUrlResponse.ok) {
+        const backendErrorText = await uploadUrlResponse.text()
+        console.error('Failed to create upload URL', {
+          status: uploadUrlResponse.status,
+          body: backendErrorText,
+        })
+        throw new Error(`Failed to create upload URL (${uploadUrlResponse.status}).`)
+      }
+
+      const uploadUrlPayload = (await uploadUrlResponse.json()) as UploadUrlResponse
+      const presignedUrl = uploadUrlPayload.uploadUrl ?? uploadUrlPayload.presignedUrl ?? uploadUrlPayload.url
+      const requiredHeaders = uploadUrlPayload.requiredHeaders ?? {}
+
+      if (!presignedUrl) {
+        throw new Error('Upload URL was not returned by the backend.')
+      }
+
+      console.info('Uploading file with presigned URL', {
+        fileName: selectedFile.name,
+        fileKey: uploadUrlPayload.fileKey,
+        clientName,
+        requiredHeaders,
+      })
+
+      const s3UploadResponse = await fetch(presignedUrl, {
+        method: 'PUT',
+        body: await selectedFile.arrayBuffer(),
+        headers: requiredHeaders,
+      })
+
+      if (!s3UploadResponse.ok) {
+        const s3ErrorText = await s3UploadResponse.text()
+        const parsedError = parseS3ErrorMessage(s3ErrorText)
+        console.error('S3 upload failed', {
+          status: s3UploadResponse.status,
+          fileName: selectedFile.name,
+          fileKey: uploadUrlPayload.fileKey,
+          requiredHeaders,
+          responseBody: s3ErrorText,
+        })
+        throw new Error(
+          parsedError
+            ? `File upload failed (${s3UploadResponse.status}): ${parsedError}`
+            : `File upload failed (${s3UploadResponse.status}).`,
+        )
+      }
+
+      setSuccessMessage(
+        `${selectedFile.name} uploaded successfully for client ${clientName}.`,
+      )
+      setSelectedFile(null)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Upload failed. Please try again.'
+      setErrorMessage(message)
+      setSuccessMessage('')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  return (
+    <SourceSectionShell
+      appearance={appearance}
+      isFetching={isUploading}
+      filters={
+        <div className="grid gap-3 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
+          <label className="rounded-[22px] bg-surface-low px-4 py-3">
+            <span className="text-[0.62rem] font-bold uppercase tracking-[0.18em] text-muted">
+              Client
+            </span>
+            <select
+              value={clientName}
+              onChange={(event) =>
+                setClientName(event.target.value as (typeof uploadClientOptions)[number])
+              }
+              className="mt-2 w-full bg-transparent text-sm font-semibold capitalize text-ink outline-none"
+            >
+              {uploadClientOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="rounded-[22px] bg-surface-low px-4 py-3">
+            <span className="text-[0.62rem] font-bold uppercase tracking-[0.18em] text-muted">
+              File
+            </span>
+            <input
+              type="file"
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null
+                setSelectedFile(file)
+                setSuccessMessage('')
+                setErrorMessage('')
+              }}
+              className="mt-2 block w-full text-sm font-medium text-ink file:mr-4 file:rounded-full file:border-0 file:bg-white file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary file:shadow-ambient"
+            />
+          </label>
+        </div>
+      }
+    >
+      <div className="space-y-5">
+        <DashboardCard
+          title="Direct Upload"
+          subtitle="Choose a client and a local file, request a presigned URL, and upload the file straight to S3."
+          badge="Uploader"
+        >
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <div className="rounded-[24px] bg-white px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+              <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-muted">
+                Selected File
+              </p>
+              <p className="mt-3 text-base font-semibold text-ink">
+                {selectedFile?.name ?? 'No file selected'}
+              </p>
+              <p className="mt-1 text-sm text-muted">
+                {selectedFile
+                  ? `${formatNumber(selectedFile.size)} bytes • ${selectedFile.type || 'Unknown type'}`
+                  : 'Pick a file from your local system to begin.'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleUpload}
+              disabled={isUploading || !selectedFile}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#14532d_0%,#1f7a45_100%)] px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_34px_rgba(20,83,45,0.24)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Icon name="upload" className="size-4" />
+              {isUploading ? 'Uploading...' : 'Upload File'}
+            </button>
+          </div>
+
+          {successMessage ? (
+            <div className="mt-4 rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              {successMessage}
+            </div>
+          ) : null}
+
+          {errorMessage ? (
+            <div className="mt-4 rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {errorMessage}
+            </div>
+          ) : null}
+        </DashboardCard>
+      </div>
     </SourceSectionShell>
   )
 }
@@ -947,3 +1184,5 @@ function getErrorMessage(error: unknown) {
 }
 
 export default Dashboard
+
+

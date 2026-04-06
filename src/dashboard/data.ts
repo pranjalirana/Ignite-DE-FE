@@ -3,6 +3,7 @@ export type IconName =
   | 'dashboard'
   | 'database'
   | 'api'
+  | 'upload'
   | 'refresh'
   | 'bell'
   | 'filter'
@@ -15,7 +16,7 @@ export type IconName =
   | 'trend'
   | 'layers'
 
-export type ViewId = 'client-data' | 'api-data'
+export type ViewId = 'client-data' | 'api-data' | 'upload'
 
 export type NavItem = {
   id: ViewId
@@ -26,4 +27,5 @@ export type NavItem = {
 export const navItems: NavItem[] = [
   { id: 'client-data', icon: 'database', label: 'CSV Data' },
   { id: 'api-data', icon: 'api', label: 'Adscribe Data' },
+  { id: 'upload', icon: 'upload', label: 'Upload' },
 ]
